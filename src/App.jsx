@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Search, ClipboardCheck, Pill, Brain, FileText, ShieldAlert, HeartPulse, FlaskConical, Star, StarOff } from 'lucide-react';
+import { Search, ClipboardCheck, Pill, Brain, FileText, ShieldAlert, HeartPulse, FlaskConical, Star, StarOff, AlertTriangle, Stethoscope, Activity } from 'lucide-react';
 import './style.css';
 
 const meds = [
@@ -39,15 +39,89 @@ const templates = [
   ['Lithium Safety Recommendation','Recommend lithium level with renal and thyroid monitoring, review of interacting medications, hydration status assessment, and monitoring for tremor, GI symptoms, confusion, or ataxia.'],
   ['Clozapine Safety Recommendation','Recommend verifying ANC eligibility and clozapine monitoring requirements, assessing bowel function, reviewing smoking status, and monitoring for sedation, orthostasis, metabolic effects, myocarditis warning signs, and seizure risk.']
 ].map(([title,body])=>({title,body}));
+const redFlagIssues = [
+  ['QT Stacking Risk','High',['Multiple QT-prolonging meds','Low K/Mg','High-dose antipsychotic','Cardiac history'],'Consider EKG review, electrolyte correction, dose burden review, and alternative agents when clinically appropriate.'],
+  ['Clozapine Constipation / Ileus Risk','High',['Clozapine','No bowel regimen','Anticholinergic burden','Abdominal pain or no BM'],'Recommend bowel function assessment, proactive bowel regimen per protocol, and urgent review for severe constipation or ileus symptoms.'],
+  ['Lithium Toxicity Risk','High',['AKI/dehydration','NSAID','ACE/ARB','Diuretic','GI illness','Ataxia/confusion'],'Recommend lithium level, renal function review, interaction review, hydration assessment, and toxicity symptom assessment.'],
+  ['Benzo + Opioid / CNS Depressant Burden','High',['Benzodiazepine','Opioid/buprenorphine','Gabapentin/pregabalin','Alcohol withdrawal meds','Excess sedation'],'Recommend monitoring sedation, respiratory status, fall risk, and cumulative CNS depressant burden.'],
+  ['Antipsychotic Polypharmacy / PRN Escalation','Moderate-High',['Multiple scheduled antipsychotics','Frequent PRNs','EPS','QT risk','sedation'],'Recommend reviewing indication, PRN frequency, cumulative dose burden, EPS/QT risk, and simplification opportunities.'],
+  ['LAI Timing / Missed-Dose Risk','Moderate-High',['Unknown last injection','Wrong product','Missed dose','Oral overlap unclear','Renal issue with paliperidone'],'Recommend verifying product, last dose date, dose, site, oral overlap requirements, and missed-dose protocol before administration.']
+].map(([title,severity,triggers,action])=>({title,severity,triggers,action}));
+
+const roundingQuestions = [
+  ['antipsychotic','Antipsychotic started, increased, duplicated, or used frequently PRN?'],
+  ['qt','QT risk present: multiple QT meds, low K/Mg, cardiac history, or high-dose antipsychotic?'],
+  ['sedation','Sedation/fall/orthostasis risk from CNS depressant burden?'],
+  ['metabolic','Metabolic monitoring needed for antipsychotic therapy?'],
+  ['eps','EPS, akathisia, dystonia, tremor, or parkinsonism concern?'],
+  ['labs','High-risk labs/levels due: clozapine ANC, lithium, valproate, CBC, LFT, renal, sodium?'],
+  ['substance','Detox, withdrawal, buprenorphine, naltrexone, or controlled substance issue?'],
+  ['discharge','Discharge continuity issue: LAI due, med access, taper, or follow-up monitoring?']
+].map(([key,label])=>({key,label}));
+
+const roundingRecommendations = {
+  antipsychotic:'Review antipsychotic indication, cumulative dose burden, duplicate therapy, PRN frequency, EPS risk, and QT/metabolic monitoring.',
+  qt:'Consider EKG review, potassium/magnesium correction, reduction of QT-stacking when possible, and monitoring per facility policy.',
+  sedation:'Review cumulative CNS depressant burden and monitor sedation, orthostasis, respiratory status, and fall risk.',
+  metabolic:'Recommend weight/BMI, blood pressure, glucose or A1c, and lipid monitoring per antipsychotic monitoring protocol.',
+  eps:'Assess EPS/akathisia symptoms, recent antipsychotic changes, dose burden, and need for treatment or regimen adjustment.',
+  labs:'Verify required labs/levels and timing for high-risk agents before continuation or dose adjustment.',
+  substance:'Review withdrawal protocol, PRN frequency, respiratory/CNS depressant burden, continuation plan, and discharge access.',
+  discharge:'Confirm medication access, LAI timing, monitoring follow-up, taper plans, and patient-specific counseling needs.'
+};
 function Button({children,onClick,active}){return <button onClick={onClick} className={active?'btn active':'btn'}>{children}</button>}
 function Badge({children}){return <span className="badge">{children}</span>}
 function SectionHeader({icon:Icon,title,subtitle}){return <div className="section"><div className="icon"><Icon size={20}/></div><div><h2>{title}</h2>{subtitle&&<p>{subtitle}</p>}</div></div>}
 function MedCard({med,favorites,toggleFavorite}){return <div className="card"><div className="cardtop"><div><h3>{med.name}</h3><p>{med.class}</p></div><button className="star" onClick={()=>toggleFavorite(med.name)}>{favorites.includes(med.name)?<Star size={20} fill="currentColor"/>:<StarOff size={20}/>}</button></div><div className="badges">{med.tags.map(t=><Badge key={t}>{t}</Badge>)}</div><h4>Clinical pearls</h4><ul>{med.pearls.map((p,i)=><li key={i}>{p}</li>)}</ul><h4>Monitoring</h4><div className="badges">{med.monitoring.map(t=><Badge key={t}>{t}</Badge>)}</div><h4 className="redtitle">Red flags</h4><div className="badges">{med.redFlags.map(t=><span key={t} className="redbadge">{t}</span>)}</div><div className="note">{med.note}</div></div>}
+function Tools({copyText,copied}){
+  const [rounding,setRounding]=useState({});
+  const [qt,setQt]=useState({qtMeds:0,lowElectrolytes:false,cardiac:false,highDose:false,older:false,other:false});
+
+  const activeKeys=Object.keys(rounding).filter(k=>rounding[k]);
+  const qtScore=Number(qt.qtMeds||0)+(qt.lowElectrolytes?2:0)+(qt.cardiac?1:0)+(qt.highDose?1:0)+(qt.older?1:0)+(qt.other?1:0);
+  const qtLevel=qtScore>=5?'High':qtScore>=3?'Moderate':qtScore>=1?'Low':'Minimal';
+  const qtAdvice=qtScore>=5?'High QT concern: consider EKG review, electrolyte correction, reducing QT-stacking, and provider clarification.':qtScore>=3?'Moderate QT concern: consider EKG/electrolyte review and monitor cumulative QT burden.':qtScore>=1?'Low QT concern: monitor and reassess if additional risk factors appear.':'No major QT risk factors selected.';
+  const roundingSummary=activeKeys.length?activeKeys.map(k=>`• ${roundingRecommendations[k]}`).join('\n'):'No rounding issues selected yet.';
+
+  return <div>
+    <SectionHeader icon={Activity} title="Clinical Tools" subtitle="Red flags, rounding mode, and QT quick screen" />
+
+    <div className="card">
+      <h3 className="row"><AlertTriangle size={20}/> Red Flag Mode</h3>
+      {redFlagIssues.map(issue=><div className="note" key={issue.title}>
+        <h4>{issue.title} <span className="redbadge">{issue.severity}</span></h4>
+        <div className="badges">{issue.triggers.map(t=><span key={t} className="redbadge">{t}</span>)}</div>
+        <p>{issue.action}</p>
+      </div>)}
+    </div>
+
+    <div className="card">
+      <h3 className="row"><Stethoscope size={20}/> Daily Rounding Mode</h3>
+      {roundingQuestions.map(q=><label className="check" key={q.key}><input type="checkbox" checked={!!rounding[q.key]} onChange={e=>setRounding({...rounding,[q.key]:e.target.checked})}/> {q.label}</label>)}
+      <div className="note" style={{whiteSpace:'pre-line'}}>{roundingSummary}</div>
+      <button className="small" onClick={()=>copyText('Rounding Summary',roundingSummary)}>Copy Summary</button>
+      {copied==='Rounding Summary'&&<p className="copied">Copied.</p>}
+    </div>
+
+    <div className="card">
+      <h3 className="row"><HeartPulse size={20}/> QT Risk Quick Tool</h3>
+      <label className="check">QT-prolonging meds: <input type="number" min="0" value={qt.qtMeds} onChange={e=>setQt({...qt,qtMeds:e.target.value})}/></label>
+      <label className="check"><input type="checkbox" checked={qt.lowElectrolytes} onChange={e=>setQt({...qt,lowElectrolytes:e.target.checked})}/> Low K/Mg or electrolyte concern</label>
+      <label className="check"><input type="checkbox" checked={qt.cardiac} onChange={e=>setQt({...qt,cardiac:e.target.checked})}/> Cardiac history or baseline QT concern</label>
+      <label className="check"><input type="checkbox" checked={qt.highDose} onChange={e=>setQt({...qt,highDose:e.target.checked})}/> High-dose antipsychotic or rapid escalation</label>
+      <label className="check"><input type="checkbox" checked={qt.older} onChange={e=>setQt({...qt,older:e.target.checked})}/> Older/frail/fall-risk patient</label>
+      <label className="check"><input type="checkbox" checked={qt.other} onChange={e=>setQt({...qt,other:e.target.checked})}/> Other risk factor present</label>
+      <div className="blue"><b>QT Score:</b> {qtScore} — <b>{qtLevel}</b><br/>{qtAdvice}</div>
+      <button className="small" onClick={()=>copyText('QT Summary',`QT risk quick screen: score ${qtScore} (${qtLevel}). ${qtAdvice}`)}>Copy QT Note</button>
+      {copied==='QT Summary'&&<p className="copied">Copied.</p>}
+    </div>
+  </div>
+}
 function App(){
  const [tab,setTab]=useState('meds'),[query,setQuery]=useState(''),[category,setCategory]=useState('All'),[favorites,setFavorites]=useState([]),[copied,setCopied]=useState('');
  const filtered=useMemo(()=>{const q=query.toLowerCase();return meds.filter(m=>(category==='All'||m.category===category)&&[m.name,m.class,m.category,...m.tags,...m.pearls,...m.monitoring,...m.redFlags].join(' ').toLowerCase().includes(q))},[query,category]);
  const toggleFavorite=name=>setFavorites(prev=>prev.includes(name)?prev.filter(x=>x!==name):[...prev,name]);
  const copyText=async(t,b)=>{try{await navigator.clipboard.writeText(b);setCopied(t);setTimeout(()=>setCopied(''),1800)}catch{setCopied('Copy unavailable')}};
- return <div className="app"><main><header><div className="brand"><Pill/><h1>BH Pharm</h1></div><span>Pocket Guide</span><p>Privacy-safe behavioral health pharmacy workflow support. Avoid entering patient names, DOBs, MRNs, or other PHI.</p></header><nav><Button active={tab==='meds'} onClick={()=>setTab('meds')}>Meds</Button><Button active={tab==='lai'} onClick={()=>setTab('lai')}>LAIs</Button><Button active={tab==='checks'} onClick={()=>setTab('checks')}>Checks</Button><Button active={tab==='notes'} onClick={()=>setTab('notes')}>Notes</Button></nav>{tab==='meds'&&<><SectionHeader icon={Search} title="Psych Med Search" subtitle="Fast pearls, monitoring, and note language"/><div className="search"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search clozapine, QT, ANC, EPS..."/></div><div className="chips">{categories.map(c=><button key={c} onClick={()=>setCategory(c)} className={category===c?'chip chipactive':'chip'}>{c}</button>)}</div><div>{filtered.map(m=><MedCard key={m.name} med={m} favorites={favorites} toggleFavorite={toggleFavorite}/>)}</div></>}{tab==='lai'&&<><SectionHeader icon={Pill} title="LAI Quick Check" subtitle="Verify product, timing, overlap, and missed-dose rules"/>{meds.filter(m=>m.category==='LAI').map(m=><div className="card" key={m.name}><h3>{m.name}</h3><p>{m.class}</p><div className="blue"><b>Before administration:</b> confirm exact product, last injection date, dose, site, initiation status, oral overlap need, renal considerations when relevant, and missed-dose instructions.</div>{m.monitoring.map((it,i)=><label className="check" key={i}><input type="checkbox"/> {it}</label>)}<h4 className="redtitle">Red flags</h4><div className="badges">{m.redFlags.map(t=><span key={t} className="redbadge">{t}</span>)}</div></div>)}</>}{tab==='checks'&&<><SectionHeader icon={ClipboardCheck} title="Checklists" subtitle="Use as a thinking aid, not a substitute for clinical judgment"/>{checklists.map(list=>{const Icon=list.icon;return <div className="card" key={list.title}><h3 className="row"><Icon size={20}/>{list.title}</h3>{list.items.map((item,i)=><label className="check" key={i}><input type="checkbox"/> {item}</label>)}</div>})}</>}{tab==='notes'&&<><SectionHeader icon={FileText} title="Consult Note Templates" subtitle="Tap copy, then customize before documenting"/>{templates.map(t=><div className="card" key={t.title}><div className="cardtop"><h3>{t.title}</h3><button className="small" onClick={()=>copyText(t.title,t.body)}>Copy</button></div><p className="bodytext">{t.body}</p>{copied===t.title&&<p className="copied">Copied.</p>}</div>)}</>}<footer><HeartPulse/><p><b>Safety note:</b> This prototype is for pharmacist workflow support only. Do not enter PHI. Verify recommendations against facility policy, current labeling, and clinical judgment.</p></footer></main></div>
+ return <div className="app"><main><header><div className="brand"><Pill/><h1>BH Pharm</h1></div><span>Pocket Guide</span><p>Privacy-safe behavioral health pharmacy workflow support. Avoid entering patient names, DOBs, MRNs, or other PHI.</p></header><nav><Button active={tab==='meds'} onClick={()=>setTab('meds')}>Meds</Button><Button active={tab==='lai'} onClick={()=>setTab('lai')}>LAIs</Button><Button active={tab==='tools'} onClick={()=>setTab('tools')}>Tools</Button><Button active={tab==='checks'} onClick={()=>setTab('checks')}>Checks</Button><Button active={tab==='notes'} onClick={()=>setTab('notes')}>Notes</Button></nav>{tab==='meds'&&<><SectionHeader icon={Search} title="Psych Med Search" subtitle="Fast pearls, monitoring, and note language"/><div className="search"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search clozapine, QT, ANC, EPS..."/></div><div className="chips">{categories.map(c=><button key={c} onClick={()=>setCategory(c)} className={category===c?'chip chipactive':'chip'}>{c}</button>)}</div><div>{filtered.map(m=><MedCard key={m.name} med={m} favorites={favorites} toggleFavorite={toggleFavorite}/>)}</div></>}{tab==='lai'&&<><SectionHeader icon={Pill} title="LAI Quick Check" subtitle="Verify product, timing, overlap, and missed-dose rules"/>{meds.filter(m=>m.category==='LAI').map(m=><div className="card" key={m.name}><h3>{m.name}</h3><p>{m.class}</p><div className="blue"><b>Before administration:</b> confirm exact product, last injection date, dose, site, initiation status, oral overlap need, renal considerations when relevant, and missed-dose instructions.</div>{m.monitoring.map((it,i)=><label className="check" key={i}><input type="checkbox"/> {it}</label>)}<h4 className="redtitle">Red flags</h4><div className="badges">{m.redFlags.map(t=><span key={t} className="redbadge">{t}</span>)}</div></div>)}</>}{tab==='tools'&&<Tools copyText={copyText} copied={copied}/>}{tab==='checks'&&<><SectionHeader icon={ClipboardCheck} title="Checklists" subtitle="Use as a thinking aid, not a substitute for clinical judgment"/>{checklists.map(list=>{const Icon=list.icon;return <div className="card" key={list.title}><h3 className="row"><Icon size={20}/>{list.title}</h3>{list.items.map((item,i)=><label className="check" key={i}><input type="checkbox"/> {item}</label>)}</div>})}</>}{tab==='notes'&&<><SectionHeader icon={FileText} title="Consult Note Templates" subtitle="Tap copy, then customize before documenting"/>{templates.map(t=><div className="card" key={t.title}><div className="cardtop"><h3>{t.title}</h3><button className="small" onClick={()=>copyText(t.title,t.body)}>Copy</button></div><p className="bodytext">{t.body}</p>{copied===t.title&&<p className="copied">Copied.</p>}</div>)}</>}<footer><HeartPulse/><p><b>Safety note:</b> This prototype is for pharmacist workflow support only. Do not enter PHI. Verify recommendations against facility policy, current labeling, and clinical judgment.</p></footer></main></div>
 }
 createRoot(document.getElementById('root')).render(<App/>);
