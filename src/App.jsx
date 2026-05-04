@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Search, ClipboardCheck, Pill, Brain, FileText, ShieldAlert, HeartPulse, FlaskConical, Star, StarOff, AlertTriangle, Stethoscope, Activity } from 'lucide-react';
+import { Search, ClipboardCheck, Pill, Brain, FileText, ShieldAlert, HeartPulse, FlaskConical, Star, StarOff, AlertTriangle, Stethoscope, Activity, Calculator } from 'lucide-react';
 import './style.css';
 
 const meds = [
