@@ -73,7 +73,7 @@ function Button({children,onClick,active}){return <button onClick={onClick} clas
 function Badge({children}){return <span className="badge">{children}</span>}
 function SectionHeader({icon:Icon,title,subtitle}){return <div className="section"><div className="icon"><Icon size={20}/></div><div><h2>{title}</h2>{subtitle&&<p>{subtitle}</p>}</div></div>}
 function MedCard({med,favorites,toggleFavorite}){return <div className="card"><div className="cardtop"><div><h3>{med.name}</h3><p>{med.class}</p></div><button className="star" onClick={()=>toggleFavorite(med.name)}>{favorites.includes(med.name)?<Star size={20} fill="currentColor"/>:<StarOff size={20}/>}</button></div><div className="badges">{med.tags.map(t=><Badge key={t}>{t}</Badge>)}</div><h4>Clinical pearls</h4><ul>{med.pearls.map((p,i)=><li key={i}>{p}</li>)}</ul><h4>Monitoring</h4><div className="badges">{med.monitoring.map(t=><Badge key={t}>{t}</Badge>)}</div><h4 className="redtitle">Red flags</h4><div className="badges">{med.redFlags.map(t=><span key={t} className="redbadge">{t}</span>)}</div><div className="note">{med.note}</div></div>}
-function Tools({copyText,copied}){
+function Tools<Button active={tab==='calcs'} onClick={()=>setTab('calcs')}>Calcs</Button>({copyText,copied}){
   const [rounding,setRounding]=useState({});
   const [qt,setQt]=useState({qtMeds:0,lowElectrolytes:false,cardiac:false,highDose:false,older:false,other:false});
 
@@ -117,11 +117,91 @@ function Tools({copyText,copied}){
     </div>
   </div>
 }
-function App(){
+function Calcs(){
+  const [wt,setWt]=useState('');
+  const [age,setAge]=useState('');
+  const [scr,setScr]=useState('');
+  const [sex,setSex]=useState('male');
+  const [height,setHeight]=useState('');
+  const [alb,setAlb]=useState('');
+  const [ca,setCa]=useState('');
+  const [wbc,setWbc]=useState('');
+  const [neut,setNeut]=useState('');
+
+  const crcl = wt && age && scr
+    ? Math.max(0, (((140-Number(age))*Number(wt))/(72*Number(scr))) * (sex==='female'?0.85:1)).toFixed(1)
+    : '';
+
+  const bmi = wt && height
+    ? ((Number(wt)/Math.pow(Number(height),2))*703).toFixed(1)
+    : '';
+
+  const correctedCa = ca && alb
+    ? (Number(ca) + 0.8*(4-Number(alb))).toFixed(1)
+    : '';
+
+  const anc = wbc && neut
+    ? ((Number(wbc)*1000)*(Number(neut)/100)).toFixed(0)
+    : '';
+
+  return <div>
+    <SectionHeader icon={Calculator} title="Dosing & Monitoring Calcs" subtitle="Quick screens only — verify with facility policy and current references" />
+
+    <div className="card">
+      <h3>Creatinine Clearance</h3>
+      <p className="bodytext">Cockcroft-Gault estimate. Use actual, adjusted, or ideal body weight based on your facility protocol.</p>
+
+      <label className="check">Age: <input type="number" value={age} onChange={e=>setAge(e.target.value)} /></label>
+      <label className="check">Weight in kg: <input type="number" value={wt} onChange={e=>setWt(e.target.value)} /></label>
+      <label className="check">SCr: <input type="number" value={scr} onChange={e=>setScr(e.target.value)} /></label>
+
+      <label className="check">Sex:
+        <select value={sex} onChange={e=>setSex(e.target.value)}>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+      </label>
+
+      <div className="blue"><b>Estimated CrCl:</b> {crcl ? `${crcl} mL/min` : 'Enter values'}</div>
+    </div>
+
+    <div className="card">
+      <h3>BMI</h3>
+      <label className="check">Weight in lb: <input type="number" value={wt} onChange={e=>setWt(e.target.value)} /></label>
+      <label className="check">Height in inches: <input type="number" value={height} onChange={e=>setHeight(e.target.value)} /></label>
+      <div className="blue"><b>BMI:</b> {bmi || 'Enter values'}</div>
+    </div>
+
+    <div className="card">
+      <h3>Corrected Calcium</h3>
+      <label className="check">Measured calcium: <input type="number" value={ca} onChange={e=>setCa(e.target.value)} /></label>
+      <label className="check">Albumin: <input type="number" value={alb} onChange={e=>setAlb(e.target.value)} /></label>
+      <div className="blue"><b>Corrected Ca:</b> {correctedCa ? `${correctedCa} mg/dL` : 'Enter values'}</div>
+    </div>
+
+    <div className="card">
+      <h3>ANC Calculator</h3>
+      <p className="bodytext">Useful for clozapine monitoring. Enter WBC as K/uL and neutrophils as percent.</p>
+      <label className="check">WBC: <input type="number" value={wbc} onChange={e=>setWbc(e.target.value)} /></label>
+      <label className="check">Neutrophils %: <input type="number" value={neut} onChange={e=>setNeut(e.target.value)} /></label>
+      <div className="blue"><b>ANC:</b> {anc ? `${anc} cells/uL` : 'Enter values'}</div>
+    </div>
+
+    <div className="card">
+      <h3>Monitoring Reminders</h3>
+      <div className="note">
+        <b>Clozapine:</b> ANC, bowel function, metabolic labs, myocarditis symptoms early in therapy.<br/><br/>
+        <b>Lithium:</b> level, renal function, TSH, calcium, interacting meds, hydration status.<br/><br/>
+        <b>Valproate:</b> level, LFTs, CBC/platelets, sedation, tremor, pregnancy-related risk when relevant.<br/><br/>
+        <b>Antipsychotics:</b> weight/BMI, A1c/glucose, lipids, EPS, QT risk, sedation/orthostasis.
+      </div>
+    </div>
+  </div>
+}function App(){
  const [tab,setTab]=useState('meds'),[query,setQuery]=useState(''),[category,setCategory]=useState('All'),[favorites,setFavorites]=useState([]),[copied,setCopied]=useState('');
  const filtered=useMemo(()=>{const q=query.toLowerCase();return meds.filter(m=>(category==='All'||m.category===category)&&[m.name,m.class,m.category,...m.tags,...m.pearls,...m.monitoring,...m.redFlags].join(' ').toLowerCase().includes(q))},[query,category]);
  const toggleFavorite=name=>setFavorites(prev=>prev.includes(name)?prev.filter(x=>x!==name):[...prev,name]);
  const copyText=async(t,b)=>{try{await navigator.clipboard.writeText(b);setCopied(t);setTimeout(()=>setCopied(''),1800)}catch{setCopied('Copy unavailable')}};
- return <div className="app"><main><header><div className="brand"><Pill/><h1>BH Pharm</h1></div><span>Pocket Guide</span><p>Privacy-safe behavioral health pharmacy workflow support. Avoid entering patient names, DOBs, MRNs, or other PHI.</p></header><nav><Button active={tab==='meds'} onClick={()=>setTab('meds')}>Meds</Button><Button active={tab==='lai'} onClick={()=>setTab('lai')}>LAIs</Button><Button active={tab==='tools'} onClick={()=>setTab('tools')}>Tools</Button><Button active={tab==='checks'} onClick={()=>setTab('checks')}>Checks</Button><Button active={tab==='notes'} onClick={()=>setTab('notes')}>Notes</Button></nav>{tab==='meds'&&<><SectionHeader icon={Search} title="Psych Med Search" subtitle="Fast pearls, monitoring, and note language"/><div className="search"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search clozapine, QT, ANC, EPS..."/></div><div className="chips">{categories.map(c=><button key={c} onClick={()=>setCategory(c)} className={category===c?'chip chipactive':'chip'}>{c}</button>)}</div><div>{filtered.map(m=><MedCard key={m.name} med={m} favorites={favorites} toggleFavorite={toggleFavorite}/>)}</div></>}{tab==='lai'&&<><SectionHeader icon={Pill} title="LAI Quick Check" subtitle="Verify product, timing, overlap, and missed-dose rules"/>{meds.filter(m=>m.category==='LAI').map(m=><div className="card" key={m.name}><h3>{m.name}</h3><p>{m.class}</p><div className="blue"><b>Before administration:</b> confirm exact product, last injection date, dose, site, initiation status, oral overlap need, renal considerations when relevant, and missed-dose instructions.</div>{m.monitoring.map((it,i)=><label className="check" key={i}><input type="checkbox"/> {it}</label>)}<h4 className="redtitle">Red flags</h4><div className="badges">{m.redFlags.map(t=><span key={t} className="redbadge">{t}</span>)}</div></div>)}</>}{tab==='tools'&&<Tools copyText={copyText} copied={copied}/>}{tab==='checks'&&<><SectionHeader icon={ClipboardCheck} title="Checklists" subtitle="Use as a thinking aid, not a substitute for clinical judgment"/>{checklists.map(list=>{const Icon=list.icon;return <div className="card" key={list.title}><h3 className="row"><Icon size={20}/>{list.title}</h3>{list.items.map((item,i)=><label className="check" key={i}><input type="checkbox"/> {item}</label>)}</div>})}</>}{tab==='notes'&&<><SectionHeader icon={FileText} title="Consult Note Templates" subtitle="Tap copy, then customize before documenting"/>{templates.map(t=><div className="card" key={t.title}><div className="cardtop"><h3>{t.title}</h3><button className="small" onClick={()=>copyText(t.title,t.body)}>Copy</button></div><p className="bodytext">{t.body}</p>{copied===t.title&&<p className="copied">Copied.</p>}</div>)}</>}<footer><HeartPulse/><p><b>Safety note:</b> This prototype is for pharmacist workflow support only. Do not enter PHI. Verify recommendations against facility policy, current labeling, and clinical judgment.</p></footer></main></div>
+ return <div className="app"><main><header><div className="brand"><Pill/><h1>BH Pharm</h1></div><span>Pocket Guide</span><p>Privacy-safe behavioral health pharmacy workflow support. Avoid entering patient names, DOBs, MRNs, or other PHI.</p></header><nav><Button active={tab==='meds'} onClick={()=>setTab('meds')}>Meds</Button><Button active={tab==='lai'} onClick={()=>setTab('lai')}>LAIs</Button><Button active={tab==='tools'} onClick={()=>setTab('tools')}>Tools</Button>{tab==='calcs'&&<Calcs/>}<Button active={tab==='checks'} onClick={()=>setTab('checks')}>Checks</Button>{tab==='calcs'&&<Calcs/>}<Button active={tab==='notes'} onClick={()=>setTab('notes')}>Notes</Button></nav>{tab==='meds'&&<><SectionHeader icon={Search} title="Psych Med Search" subtitle="Fast pearls, monitoring, and note language"/><div className="search"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search clozapine, QT, ANC, EPS..."/></div><div className="chips">{categories.map(c=><button key={c} onClick={()=>setCategory(c)} className={category===c?'chip chipactive':'chip'}>{c}</button>)}</div><div>{filtered.map(m=><MedCard key={m.name} med={m} favorites={favorites} toggleFavorite={toggleFavorite}/>)}</div></>}{tab==='lai'&&<><SectionHeader icon={Pill} title="LAI Quick Check" subtitle="Verify product, timing, overlap, and missed-dose rules"/>{meds.filter(m=>m.category==='LAI').map(m=><div className="card" key={m.name}><h3>{m.name}</h3><p>{m.class}</p><div className="blue"><b>Before administration:</b> confirm exact product, last injection date, dose, site, initiation status, oral overlap need, renal considerations when relevant, and missed-dose instructions.</div>{m.monitoring.map((it,i)=><label className="check" key={i}><input type="checkbox"/> {it}</label>)}<h4 className="redtitle">Red flags</h4><div className="badges">{m.redFlags.map(t=><span key={t} className="redbadge">{t}</span>)}</div></div>)}</>}{tab==='tools'&&<Tools copyText={copyText} copied={copied}/>}{tab==='checks'&&<><SectionHeader icon={ClipboardCheck} title="Checklists" subtitle="Use as a thinking aid, not a substitute for clinical judgment"/>{checklists.map(list=>{const Icon=list.icon;return <div className="card" key={list.title}><h3 className="row"><Icon size={20}/>{list.title}</h3>{list.items.map((item,i)=><label className="check" key={i}><input type="checkbox"/> {item}</label>)}</div>})}</>}{tab==='notes'&&<><SectionHeader icon={FileText} title="Consult Note Templates" subtitle="Tap copy, then customize before documenting"/>{templates.map(t=><div className="card" key={t.title}><div className="cardtop"><h3>{t.title}</h3><button className="small" onClick={()=>copyText(t.title,t.body)}>Copy</button></div><p className="bodytext">{t.body}</p>{copied===t.title&&<p className="copied">Copied.</p>}</div>)}</>}<footer><HeartPulse/><p><b>Safety note:</b> This prototype is for pharmacist workflow support only. Do not enter PHI. Verify recommendations against facility policy, current labeling, and clinical judgment.</p></footer></main></div>
 }
 createRoot(document.getElementById('root')).render(<App/>);
