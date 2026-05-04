@@ -84,7 +84,7 @@ function Tools({copyText,copied}){
   const roundingSummary=activeKeys.length?activeKeys.map(k=>`• ${roundingRecommendations[k]}`).join('\n'):'No rounding issues selected yet.';
 
   return <div>
-    <SectionHeader icon={Activity, Calculator} title="Clinical Tools" subtitle="Red flags, rounding mode, and QT quick screen" />
+    <SectionHeader icon={Activity} title="Clinical Tools" subtitle="Red flags, rounding mode, and QT quick screen" />
 
     <div className="card">
       <h3 className="row"><AlertTriangle size={20}/> Red Flag Mode</h3>
